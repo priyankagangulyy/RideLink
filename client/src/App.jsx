@@ -1,6 +1,74 @@
-import './App.css';
+import { useState } from "react";
+import "./App.css";
+
+function dateAfter(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function normalizePlace(value) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+const sampleRides = [
+  {
+    origin: "Santa Clara University",
+    destination: "San José",
+    date: dateAfter(0),
+    time: "5:30 PM",
+    seats: 3,
+    driver: "Jordan",
+  },
+  {
+    origin: "Santa Clara University",
+    destination: "San José Downtown",
+    date: dateAfter(1),
+    time: "6:15 PM",
+    seats: 2,
+    driver: "Maya",
+  },
+];
 
 function App() {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [date, setDate] = useState("");
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState("");
+
+  function handleSearch(event) {
+    event.preventDefault();
+
+    if (!from.trim() || !to.trim()) {
+      setError("Enter both a starting point and a destination.");
+      setResults(null);
+      return;
+    }
+
+    const normalizedFrom = normalizePlace(from);
+    const normalizedTo = normalizePlace(to);
+
+    const matches = sampleRides.filter((ride) => {
+      const matchesFrom = normalizePlace(ride.origin).includes(normalizedFrom);
+      const matchesTo = normalizePlace(ride.destination).includes(normalizedTo);
+      const matchesDate = !date || ride.date === date;
+
+      return matchesFrom && matchesTo && matchesDate;
+    });
+
+    setError("");
+    setResults(matches);
+  }
+
   return (
     <div className="site-shell">
       <header className="topbar">
@@ -20,8 +88,10 @@ function App() {
         </nav>
 
         <div className="nav-actions">
-          <button className="sign-in">Sign in</button>
-          <button className="nav-cta">Join RideLink <span>↗</span></button>
+          <button className="sign-in" type="button">Sign in</button>
+          <button className="nav-cta" type="button">
+            Join RideLink <span>↗</span>
+          </button>
         </div>
       </header>
 
@@ -44,30 +114,90 @@ function App() {
               experience.
             </p>
 
-            <div className="search-panel" id="find-rides">
+            <form className="search-panel" id="find-rides" onSubmit={handleSearch}>
               <label className="search-field">
                 <span>FROM</span>
-                <input type="text" placeholder="Your starting point" />
+                <input
+                  type="text"
+                  list="place-suggestions"
+                  placeholder="Your starting point"
+                  value={from}
+                  onChange={(event) => setFrom(event.target.value)}
+                />
               </label>
 
               <div className="field-divider" aria-hidden="true" />
 
               <label className="search-field">
                 <span>TO</span>
-                <input type="text" placeholder="Where are you going?" />
+                <input
+                  type="text"
+                  list="place-suggestions"
+                  placeholder="Where are you going?"
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                />
               </label>
 
               <div className="field-divider" aria-hidden="true" />
 
               <label className="search-field date-field">
                 <span>WHEN</span>
-                <input type="date" aria-label="Travel date" />
+                <input
+                  type="date"
+                  aria-label="Travel date"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                />
               </label>
 
-              <button className="search-button" type="button">
+              <button className="search-button" type="submit">
                 Find rides <span>→</span>
               </button>
-            </div>
+
+              <datalist id="place-suggestions">
+                <option value="Santa Clara University" />
+                <option value="Santa Clara" />
+                <option value="San José" />
+                <option value="San Jose Downtown" />
+              </datalist>
+            </form>
+
+            {error && <p className="search-message search-error">{error}</p>}
+
+            {results !== null && (
+              <section className="search-results" aria-live="polite">
+                <h2>
+                  {results.length
+                    ? `${results.length} sample ride${results.length === 1 ? "" : "s"} found`
+                    : "No sample rides found"}
+                </h2>
+
+                {results.length === 0 ? (
+                  <p className="search-message">
+                    Try “Santa Clara” for your starting point and “San Jose”
+                    for your destination.
+                  </p>
+                ) : (
+                  results.map((ride) => (
+                    <article
+                      className="search-result-card"
+                      key={`${ride.driver}-${ride.date}`}
+                    >
+                      <div>
+                        <span className="trip-label">DEMO RIDE · {ride.time}</span>
+                        <h3>{ride.origin} → {ride.destination}</h3>
+                        <p>
+                          {new Date(`${ride.date}T12:00:00`).toLocaleDateString()}
+                          {" · "}Driver: {ride.driver}
+                        </p>
+                      </div>
+                      <span className="result-seats">{ride.seats} seats open</span>
+                    </article>
+                  ))
+                )}
+              </section>
+            )}
 
             <p className="hero-note">
               <span className="note-icon">✳</span>

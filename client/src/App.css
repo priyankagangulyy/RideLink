@@ -584,3 +584,58 @@
     min-height: 120px;
   }
 }
+
+.search-results {
+  margin-top: 18px;
+  color: #173f3d;
+}
+
+.search-results h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.search-message {
+  color: #647873;
+  font-size: 0.95rem;
+}
+
+.search-error {
+  color: #c84f3d;
+}
+
+.search-result-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 10px;
+  padding: 16px 18px;
+  border: 1px solid #e9e2d5;
+  border-radius: 16px;
+  background: #fffdf8;
+}
+
+.search-result-card h3 {
+  margin: 6px 0;
+  color: #173f3d;
+}
+
+.search-result-card p {
+  margin: 0;
+  color: #71817b;
+  font-size: 0.9rem;
+}
+
+.result-seats {
+  flex-shrink: 0;
+  color: #26745d;
+  font-weight: 700;
+}
+
+@media (max-width: 650px) {
+  .search-result-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
