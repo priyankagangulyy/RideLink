@@ -7,7 +7,7 @@ const helmet = require("helmet");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const session = require("express-session");
-const MongoStore = require("connect-mongo");
+const MongoStore = require("connect-mongo").default;
 const nodemailer = require("nodemailer");
 const rateLimit = require("express-rate-limit");
 
