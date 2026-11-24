@@ -8,7 +8,9 @@ RideLink is a student ridesharing app for posting trips, finding open seats, and
 - Password hashing with bcrypt, session cookies, login rate limits, and server-side input validation
 - Create, search, join, leave, and cancel rides
 - Private ride listings available only to signed-in, email-verified users
-- One-click map directions for each posted route
+- Google Places address search, draggable pickup and destination pins, and live driving-distance estimates when a Maps API key is configured
+- One-click map directions for each posted route, including saved pin coordinates
+- Directly typed departure times with format and future-time validation
 - Atomic seat updates so concurrent join requests cannot overbook a ride
 - Ride-related community reports stored in MongoDB with an administrator review queue
 - Helmet security headers, same-site HTTP-only session cookies, and origin checks for state-changing requests
@@ -17,14 +19,15 @@ University email verification confirms control of an address at a `.edu` domain.
 
 ## Run locally
 
-Requirements: Node.js 20+, MongoDB, and an SMTP account for sending verification codes. For a local-only demo, the API can reveal verification codes when `ALLOW_DEV_EMAIL_CODE=true`; never enable that option in production.
+Requirements: Node.js 20+, MongoDB, a Google Maps Platform API key for the interactive map, and an SMTP account for sending verification codes. For a local-only demo, the API can reveal verification codes when `ALLOW_DEV_EMAIL_CODE=true`; never enable that option in production.
 
 1. Copy `server/.env.example` to `server/.env` if you do not already have a local config. Set `MONGODB_URI`, a long random `SESSION_SECRET`, and `ADMIN_EMAILS` to one or more verified university email addresses that should be allowed to review reports.
 2. In Atlas, add the current public IP address of the machine running the API under **Network Access**. Keep the allowlist narrow; do not allow all IP addresses.
-3. For real verification email, set the SMTP values in `server/.env`. In local development only, set `ALLOW_DEV_EMAIL_CODE=true` to display the code in the server response and terminal.
-4. In one terminal, run `cd server && npm install && npm run dev`.
-5. In another terminal, run `cd client && npm install && npm run dev`.
-6. Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
+3. In Google Cloud, enable billing and the Maps JavaScript API, Places API (New), Routes API, and Geocoding API. Create a browser key restricted to the local and deployed website origins and to only those APIs. Copy `client/.env.example` to `client/.env.local` and set `VITE_GOOGLE_MAPS_API_KEY` to that key. Do not commit the key.
+4. For real verification email, set the SMTP values in `server/.env`. In local development only, set `ALLOW_DEV_EMAIL_CODE=true` to display the code in the server response and terminal.
+5. In one terminal, run `cd server && npm install && npm run dev`.
+6. In another terminal, run `cd client && npm install && npm run dev`.
+7. Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
 
 Vite forwards `/api` requests to the local API at port 4000. Set `CLIENT_URL` to the exact frontend origin. Use HTTPS, a unique secret, real email delivery, and secure environment variables for deployment. Do not use the development email-code mode in production.
 

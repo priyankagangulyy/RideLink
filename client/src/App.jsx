@@ -1,5 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
+import MapsLocationPicker from "./MapsLocationPicker.jsx";
+
+function localDateValue(date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function parseTimeInput(value) {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})(?:\s*([ap])\.?m\.?)?$/i);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const period = match[3]?.toLowerCase();
+  if (minutes > 59) return null;
+  if (period) {
+    if (hours < 1 || hours > 12) return null;
+    if (period === "p" && hours !== 12) hours += 12;
+    if (period === "a" && hours === 12) hours = 0;
+  } else if (hours > 23) {
+    return null;
+  }
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function formatDistance(meters) {
+  if (!Number.isFinite(Number(meters))) return "";
+  const miles = Number(meters) / 1609.344;
+  return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
+}
 
 async function api(path, options = {}) {
   const response = await fetch(`/api${path}`, {
@@ -26,7 +55,13 @@ function RideCard({ ride, user, onAction, onReport, busy }) {
   const driverId = ride.driver?._id || ride.driver?.id;
   const isDriver = user && driverId === user.id;
   const isPassenger = user && ride.passengers?.some((person) => (person._id || person.id) === user.id);
-  const directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(ride.origin)}&destination=${encodeURIComponent(ride.destination)}`;
+  const origin = Number.isFinite(ride.originCoordinates?.lat) && Number.isFinite(ride.originCoordinates?.lng)
+    ? `${ride.originCoordinates.lat},${ride.originCoordinates.lng}`
+    : ride.origin;
+  const destination = Number.isFinite(ride.destinationCoordinates?.lat) && Number.isFinite(ride.destinationCoordinates?.lng)
+    ? `${ride.destinationCoordinates.lat},${ride.destinationCoordinates.lng}`
+    : ride.destination;
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
 
   return (
     <article className="ride-card">
@@ -35,6 +70,7 @@ function RideCard({ ride, user, onAction, onReport, busy }) {
         <div>
           <h3>{ride.origin} <span aria-hidden="true">→</span> {ride.destination}</h3>
           <p>{formatDeparture(ride.departureAt)}</p>
+          {ride.distanceMeters && <p className="ride-distance">{formatDistance(ride.distanceMeters)} driving distance</p>}
           {ride.notes && <p className="ride-notes">{ride.notes}</p>}
         </div>
       </div>
@@ -82,8 +118,18 @@ function App() {
   const [busyRide, setBusyRide] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [rideForm, setRideForm] = useState({ origin: "", destination: "", departureAt: "", seats: "2", notes: "" });
-  const [minimumDeparture] = useState(() => new Date(Date.now() + 60_000).toISOString().slice(0, 16));
+  const [rideForm, setRideForm] = useState({
+    origin: "",
+    destination: "",
+    originCoordinates: null,
+    destinationCoordinates: null,
+    distanceMeters: null,
+    departureDate: "",
+    departureTime: "",
+    seats: "2",
+    notes: "",
+  });
+  const [minimumDepartureDate] = useState(() => localDateValue(new Date()));
   const [rideFormOpen, setRideFormOpen] = useState(false);
   const [reportRide, setReportRide] = useState(null);
   const [reportForm, setReportForm] = useState({ reason: "safety", details: "" });
@@ -250,14 +296,40 @@ function App() {
 
   async function handleCreateRide(event) {
     event.preventDefault();
+    const normalizedTime = parseTimeInput(rideForm.departureTime);
+    if (!rideForm.originCoordinates || !rideForm.destinationCoordinates) {
+      setError("Choose both addresses from the Google Maps suggestions or place both pins on the map.");
+      return;
+    }
+    if (!rideForm.distanceMeters) {
+      setError("Wait for Google Maps to calculate the driving route before posting.");
+      return;
+    }
+    if (!rideForm.departureDate || !normalizedTime) {
+      setError("Enter a valid departure date and time, such as 9:30 AM or 14:30.");
+      return;
+    }
     try {
-      const departureAt = new Date(rideForm.departureAt).toISOString();
+      const localDeparture = new Date(`${rideForm.departureDate}T${normalizedTime}:00`);
+      if (!Number.isFinite(localDeparture.getTime()) || localDeparture <= new Date()) {
+        throw new Error("Choose a departure time in the future.");
+      }
+      const departureAt = localDeparture.toISOString();
       await api("/rides", {
         method: "POST",
-        body: JSON.stringify({ ...rideForm, departureAt, seats: Number(rideForm.seats) }),
+        body: JSON.stringify({
+          origin: rideForm.origin,
+          destination: rideForm.destination,
+          originCoordinates: rideForm.originCoordinates,
+          destinationCoordinates: rideForm.destinationCoordinates,
+          distanceMeters: rideForm.distanceMeters,
+          departureAt,
+          seats: Number(rideForm.seats),
+          notes: rideForm.notes,
+        }),
       });
       setRideFormOpen(false);
-      setRideForm({ origin: "", destination: "", departureAt: "", seats: "2", notes: "" });
+      setRideForm({ origin: "", destination: "", originCoordinates: null, destinationCoordinates: null, distanceMeters: null, departureDate: "", departureTime: "", seats: "2", notes: "" });
       setToast("Your ride is posted.");
       setActiveTab("find");
       await Promise.all([fetchRides({ from, to, date }), fetchMyRides()]);
@@ -429,13 +501,26 @@ function App() {
       </div>}
 
       {rideFormOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setRideFormOpen(false)}>
-        <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="ride-title">
+        <section className="modal-card ride-modal" role="dialog" aria-modal="true" aria-labelledby="ride-title">
           <button className="modal-close" aria-label="Close" onClick={() => setRideFormOpen(false)}>×</button>
           <span className="modal-kicker">OFFER A SEAT</span><h2 id="ride-title">Post a ride</h2><p className="modal-description">Share the route and leave the rest to RideLink.</p>
           <form className="modal-form" onSubmit={handleCreateRide}>
-            <label>Starting point<input required maxLength="120" value={rideForm.origin} onChange={(event) => setRideForm({ ...rideForm, origin: event.target.value })} /></label>
-            <label>Destination<input required maxLength="120" value={rideForm.destination} onChange={(event) => setRideForm({ ...rideForm, destination: event.target.value })} /></label>
-            <label>Departure<input type="datetime-local" required min={minimumDeparture} value={rideForm.departureAt} onChange={(event) => setRideForm({ ...rideForm, departureAt: event.target.value })} /></label>
+            <MapsLocationPicker
+              apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+              origin={rideForm.origin}
+              destination={rideForm.destination}
+              originCoordinates={rideForm.originCoordinates}
+              destinationCoordinates={rideForm.destinationCoordinates}
+              onLocationChange={(field, address, coordinates) => setRideForm((form) => ({
+                ...form,
+                [field]: address,
+                [`${field}Coordinates`]: coordinates,
+                distanceMeters: null,
+              }))}
+              onDistanceChange={(route) => setRideForm((form) => ({ ...form, distanceMeters: route?.meters || null }))}
+            />
+            <label>Departure date<input type="date" required min={minimumDepartureDate} value={rideForm.departureDate} onChange={(event) => setRideForm({ ...rideForm, departureDate: event.target.value })} /></label>
+            <label>Departure time<input type="text" required maxLength="10" inputMode="text" autoComplete="off" placeholder="9:30 AM or 14:30" value={rideForm.departureTime} onChange={(event) => setRideForm({ ...rideForm, departureTime: event.target.value })} /><small>Type the time directly. We’ll check that it’s valid and in the future.</small></label>
             <label>Open seats<select value={rideForm.seats} onChange={(event) => setRideForm({ ...rideForm, seats: event.target.value })}>{[1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
             <label>Details (optional)<textarea maxLength="500" rows="3" placeholder="Pickup details or anything riders should know" value={rideForm.notes} onChange={(event) => setRideForm({ ...rideForm, notes: event.target.value })} /></label>
             {error && <p className="form-error" role="alert">{error}</p>}

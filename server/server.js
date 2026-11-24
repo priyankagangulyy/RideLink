@@ -43,6 +43,15 @@ const Ride = mongoose.model(
       driver: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
       origin: { type: String, required: true, trim: true, maxlength: 120 },
       destination: { type: String, required: true, trim: true, maxlength: 120 },
+      originCoordinates: {
+        lat: { type: Number, min: -90, max: 90 },
+        lng: { type: Number, min: -180, max: 180 },
+      },
+      destinationCoordinates: {
+        lat: { type: Number, min: -90, max: 90 },
+        lng: { type: Number, min: -180, max: 180 },
+      },
+      distanceMeters: { type: Number, min: 1 },
       departureAt: { type: Date, required: true, index: true },
       seatsTotal: { type: Number, required: true, min: 1, max: 7 },
       seatsAvailable: { type: Number, required: true, min: 0, max: 7 },
@@ -154,6 +163,12 @@ function cleanText(value, maxLength) {
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function validCoordinates(value) {
+  if (!value || typeof value !== "object") return false;
+  const { lat, lng } = value;
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
 function hashCode(code) {
@@ -349,6 +364,10 @@ app.post("/api/rides", requireAuth, rideLimiter, async (req, res, next) => {
     const departureAt = new Date(req.body.departureAt);
     const seats = Number(req.body.seats);
     const notes = cleanText(req.body.notes, 500);
+    const originCoordinates = req.body.originCoordinates;
+    const destinationCoordinates = req.body.destinationCoordinates;
+    const hasCoordinates = originCoordinates !== undefined || destinationCoordinates !== undefined;
+    const distanceMeters = Number(req.body.distanceMeters);
     if (!origin || !destination || origin.toLowerCase() === destination.toLowerCase()) {
       return res.status(400).json({ error: "Enter different starting and destination locations." });
     }
@@ -358,10 +377,17 @@ app.post("/api/rides", requireAuth, rideLimiter, async (req, res, next) => {
     if (!Number.isInteger(seats) || seats < 1 || seats > 7) {
       return res.status(400).json({ error: "Choose between 1 and 7 available seats." });
     }
+    if (hasCoordinates && (!validCoordinates(originCoordinates) || !validCoordinates(destinationCoordinates))) {
+      return res.status(400).json({ error: "Choose valid pickup and destination pins on the map." });
+    }
+    if (hasCoordinates && (!Number.isFinite(distanceMeters) || distanceMeters < 1)) {
+      return res.status(400).json({ error: "Wait for the driving distance to load before posting." });
+    }
     const ride = await Ride.create({
       driver: req.session.userId,
       origin,
       destination,
+      ...(hasCoordinates ? { originCoordinates, destinationCoordinates, distanceMeters } : {}),
       departureAt,
       seatsTotal: seats,
       seatsAvailable: seats,
